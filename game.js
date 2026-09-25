@@ -12,9 +12,10 @@
   const PADDLE_HEIGHT = 80;
   const PADDLE_MARGIN = 20;
   const BALL_RADIUS = 8;
+  const PLAYER_SPEED = 400; // px/s
+  const COMPUTER_SPEED = 300; // px/s, slower than the player so it's beatable
 
-  // Game state. Paddle/ball movement, AI and scoring are added in later tasks;
-  // this scaffold only renders the static layout each frame.
+  // Game state. Ball movement/physics and scoring are added in later tasks.
   const state = {
     running: false,
     player: {
@@ -45,15 +46,56 @@
   overlay.addEventListener("click", start);
   window.addEventListener("keydown", start);
 
-  // Fixed-timestep update: game logic (movement, AI, physics, scoring) is
-  // added in later tasks. The loop and render pipeline are wired up now so
-  // that work can plug into it.
+  const UP_KEYS = new Set(["ArrowUp", "w", "W"]);
+  const DOWN_KEYS = new Set(["ArrowDown", "s", "S"]);
+  const input = { up: false, down: false };
+
+  window.addEventListener("keydown", (e) => {
+    if (UP_KEYS.has(e.key)) input.up = true;
+    if (DOWN_KEYS.has(e.key)) input.down = true;
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") e.preventDefault();
+  });
+
+  window.addEventListener("keyup", (e) => {
+    if (UP_KEYS.has(e.key)) input.up = false;
+    if (DOWN_KEYS.has(e.key)) input.down = false;
+  });
+
+  function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+  }
+
+  function movePaddle(paddle, dy) {
+    paddle.y = clamp(paddle.y + dy, 0, HEIGHT - paddle.height);
+  }
+
+  function updatePlayer(dt) {
+    let dy = 0;
+    if (input.up) dy -= PLAYER_SPEED * dt;
+    if (input.down) dy += PLAYER_SPEED * dt;
+    movePaddle(state.player, dy);
+  }
+
+  function updateComputer(dt) {
+    const paddle = state.computer;
+    const center = paddle.y + paddle.height / 2;
+    const maxStep = COMPUTER_SPEED * dt;
+    const dy = clamp(state.ball.y - center, -maxStep, maxStep);
+    movePaddle(paddle, dy);
+  }
+
+  // Fixed-timestep update: ball physics and scoring are added in later
+  // tasks. The loop and render pipeline are wired up now so that work can
+  // plug into it.
   const STEP_MS = 1000 / 60;
   let accumulator = 0;
   let lastTime = null;
 
   function update(dtMs) {
-    // no-op placeholder: paddle/ball movement lands in later tasks
+    if (!state.running) return;
+    const dt = dtMs / 1000;
+    updatePlayer(dt);
+    updateComputer(dt);
   }
 
   function drawCourt() {

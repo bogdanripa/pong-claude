@@ -1,0 +1,72 @@
+name: deploy
+
+on:
+  push:
+    branches: [main, dev]
+
+# One upload at a time per branch: two overlapping runs would both PUT a
+# bundle and the one that finishes last wins, regardless of which commit
+# is newer.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+# A static site has no container and no image. The upload is the whole
+# deploy — there is no digest to watch, no healthcheck to wait on and no
+# rollback to catch, which is why there is no verification step here and
+# why its absence is not an oversight. If this repo later grows a
+# Dockerfile, call apps_deploy_workflow again with kind='both' rather
+# than hand-editing this file.
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No build step: the checked-out files ARE the site. Publishing from
+      # the repo root, so the site shares a directory with everything else.
+      #
+      # -i is an ALLOWLIST of web assets and -x removes what matches it by
+      # extension but is not the site. It is an allowlist on purpose: a gap
+      # here makes one asset 404, which you will notice; a gap in a
+      # denylist publishes source code on the public URL, which nobody
+      # notices. If an asset is missing from the deployed site, it is
+      # almost certainly an extension not in the -i list.
+      #
+      # index.html must end up at the zip's ROOT.
+      - name: Package the bundle
+        run: |
+          cd .
+          zip -qr "$GITHUB_WORKSPACE/site.zip" . \
+            -i '*.html' '*.htm' '*.css' '*.js' '*.mjs' \
+               '*.map' '*.json' '*.txt' '*.xml' '*.svg' \
+               '*.png' '*.jpg' '*.jpeg' '*.gif' '*.webp' \
+               '*.avif' '*.ico' '*.bmp' '*.woff' '*.woff2' \
+               '*.ttf' '*.otf' '*.eot' '*.mp3' '*.mp4' \
+               '*.webm' '*.ogg' '*.wav' '*.pdf' '*.webmanifest' \
+               '*.csv' \
+            -x '.git/*' '.github/*' '.gitignore' 'node_modules/*' 'package.json' \
+               'package-lock.json' 'yarn.lock' 'pnpm-lock.yaml' 'Dockerfile*' '.dockerignore' \
+               'docker-compose*' 'test/*' 'tests/*' '__tests__/*' '*.test.js' \
+               '*.spec.js' 'migrations/*' '*.sql' '*.md' '.env' \
+               '.env.*'
+          # Printed on every run: the bundle is PUBLIC, so what went into
+          # it is worth one line of log rather than a discovery later.
+          unzip -l "$GITHUB_WORKSPACE/site.zip"
+
+      # PAAS_KEY is this app's scoped deploy key. It is already in the repo:
+      # apps_create returns it and github_secret_set installs it. Nothing for
+      # a human to paste.
+      #
+      # ?commit= is what lets deploys_status say WHICH build is live. Without
+      # it the only way to answer that is to compare an upload time against a
+      # commit time, which is a guess — and a wrong one whenever a deploy was
+      # rolled back, because then the newer timestamp belongs to the older
+      # build.
+      - name: Upload the frontend
+        run: |
+          curl -fsS -X PUT \
+            -H "Authorization: Bearer ${{ github.ref_name == 'dev' && secrets.PAAS_KEY_DEV || secrets.PAAS_KEY }}" \
+            --data-binary @site.zip \
+            "https://api-coolify.bogdanripa.com/apps/${{ github.ref_name == 'dev' && 'pong-dev' || 'pong' }}/frontend?commit=${{ github.sha }}"

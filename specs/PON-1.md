@@ -52,3 +52,61 @@ a simple computer opponent. Deploy it live so it can be played in a browser.
 - Match end screens, win conditions, or restart menus.
 - Backend/server-side logic — this is a static, client-side game unless the
   design decides otherwise.
+
+## Design
+
+The game is a single static page: no backend, no build step, no data model.
+
+### Components
+
+- **`index.html`** — the page shell: a `<canvas>` element, the score display,
+  and a "click/press to start" overlay. Loads `game.js`. Includes a
+  `<link rel="icon">` favicon.
+- **`game.js`** — one script, split into small functions/objects (no bundler,
+  no framework, no external dependencies):
+  - **Game loop** — a `requestAnimationFrame` loop driving fixed-timestep
+    updates: move ball and paddles, detect collisions, render to canvas.
+  - **Input** — keydown/keyup listeners for Up/Down (and `W`/`S`) set a
+    direction flag consumed by the loop; no polling of `document` state
+    beyond that flag.
+  - **Player paddle** — position clamped to the court's top/bottom bounds
+    each frame.
+  - **Computer paddle (AI)** — each frame, moves toward the ball's `y`
+    position at a fixed max speed slightly lower than what would make it
+    unbeatable; clamped to court bounds. No prediction, no difficulty
+    setting.
+  - **Ball** — position + velocity vector. Reflects `vy` on top/bottom wall
+    hits. Reflects/adjusts `vx`/`vy` on paddle hits (simple reflection based
+    on where it struck the paddle is enough). On passing a paddle's edge,
+    triggers a score event and resets to centre court with a relaunch after
+    a short pause.
+  - **Score** — two in-memory counters (player, computer) rendered onto the
+    canvas or a DOM element above/over it; incremented on each score event.
+    Not persisted (see Out of scope).
+- **`favicon.ico`** (or `.svg`/`.png` referenced from `index.html`) — static
+  asset, no generation step.
+- **`style.css`** (optional, small) — centres the canvas and basic page
+  styling. Can be inlined in `index.html` instead if trivial.
+
+### Data model
+
+None. All state (ball position/velocity, paddle positions, scores) lives in
+JS variables in memory for the lifetime of the page; nothing is persisted
+across reloads, and there is no server to hold state.
+
+### API contracts
+
+None — no frontend/backend split. The page is served as static files with
+no API calls.
+
+### Deployment
+
+Static site, served by the hosting platform's static frontend (no
+container, no Dockerfile). CI on GitHub Actions zips the repo root
+(`index.html` at the zip root) and uploads it on every push to `main` and
+`dev`:
+
+- `dev` branch → staging app `pong-dev` → https://pong-dev-coolify.bogdanripa.com
+- `main` branch → production app `pong` → https://pong-coolify.bogdanripa.com
+
+No database, no environment variables, no server-side secrets.

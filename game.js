@@ -13,6 +13,8 @@
   const PADDLE_HEIGHT = 80;
   const PADDLE_MARGIN = 20;
   const BALL_RADIUS = 8;
+  const PLAYER_SPEED = 400; // px/s
+  const COMPUTER_SPEED = 300; // px/s, slower than the player so it's beatable
 
   const BASE_BALL_SPEED = 5; // px per fixed step
   const MAX_BALL_SPEED = 12; // px per fixed step
@@ -25,8 +27,7 @@
     return Math.max(min, Math.min(max, value));
   }
 
-  // Game state. Paddle input/AI are added in another task; this task drives
-  // ball movement, collisions and scoring.
+  // Game state.
   const state = {
     running: false,
     player: {
@@ -81,8 +82,42 @@
   overlay.addEventListener("click", start);
   window.addEventListener("keydown", start);
 
-  // Fixed-timestep update: ball movement, collisions and scoring live here.
-  // Player input and computer AI paddle movement land in another task.
+  const UP_KEYS = new Set(["ArrowUp", "w", "W"]);
+  const DOWN_KEYS = new Set(["ArrowDown", "s", "S"]);
+  const input = { up: false, down: false };
+
+  window.addEventListener("keydown", (e) => {
+    if (UP_KEYS.has(e.key)) input.up = true;
+    if (DOWN_KEYS.has(e.key)) input.down = true;
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") e.preventDefault();
+  });
+
+  window.addEventListener("keyup", (e) => {
+    if (UP_KEYS.has(e.key)) input.up = false;
+    if (DOWN_KEYS.has(e.key)) input.down = false;
+  });
+
+  function movePaddle(paddle, dy) {
+    paddle.y = clamp(paddle.y + dy, 0, HEIGHT - paddle.height);
+  }
+
+  function updatePlayer(dt) {
+    let dy = 0;
+    if (input.up) dy -= PLAYER_SPEED * dt;
+    if (input.down) dy += PLAYER_SPEED * dt;
+    movePaddle(state.player, dy);
+  }
+
+  function updateComputer(dt) {
+    const paddle = state.computer;
+    const center = paddle.y + paddle.height / 2;
+    const maxStep = COMPUTER_SPEED * dt;
+    const dy = clamp(state.ball.y - center, -maxStep, maxStep);
+    movePaddle(paddle, dy);
+  }
+
+  // Fixed-timestep update: paddle input/AI, then ball movement, collisions
+  // and scoring.
   const STEP_MS = 1000 / 60;
   let accumulator = 0;
   let lastTime = null;
@@ -156,6 +191,10 @@
 
   function update(dtMs) {
     if (!state.running) return;
+
+    const dt = dtMs / 1000;
+    updatePlayer(dt);
+    updateComputer(dt);
 
     if (state.serveTimer > 0) {
       state.serveTimer -= dtMs;
